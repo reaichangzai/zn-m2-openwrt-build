@@ -3,7 +3,10 @@ set -euo pipefail
 
 cd openwrt/bin/targets/*/*
 rm -rf packages
-echo "FIRMWARE=$PWD" >> "$GITHUB_ENV"
+
+FIRMWARE="$PWD"
+export FIRMWARE
+echo "FIRMWARE=$FIRMWARE" >> "$GITHUB_ENV"
 
 mkdir -p /tmp/release-firmware
 
