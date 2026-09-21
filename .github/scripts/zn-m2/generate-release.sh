@@ -22,9 +22,8 @@ grep sing-box    "$MANIFEST" | awk -F" - " '{print $2}' | awk -F"-" '{print "**S
 grep hysteria    "$MANIFEST" | awk -F" - " '{print $2}' | awk -F"-" '{print "**Hysteria:** `"$1"`"}'    >> release.txt || true
 grep chinadns-ng "$MANIFEST" | awk -F" - " '{print $2}' | awk -F"-" '{print "**ChinaDNS-NG:** `"$1"`"}' >> release.txt || true
 echo "" >> release.txt
-echo "### 变体说明" >> release.txt
+echo "### 固件说明" >> release.txt
 echo "- **basic**: 纯净版，不含集客AC控制器" >> release.txt
-echo "- **gecoosac-v2**: 含集客AC控制器 V2" >> release.txt
 echo "" >> release.txt
 echo "详细包信息请查看 manifest 文件" >> release.txt
 
