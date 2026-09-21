@@ -124,23 +124,23 @@ jobs:
         echo "$(nproc) thread compile (basic)"
         make -j$(nproc) || make -j1 V=s
 
-    - name: Save BASIC firmware
-      run: |
-        cd openwrt/bin/targets/*/*
-        rm -rf packages
-        mkdir -p /tmp/firmware-basic
-        cp -a . /tmp/firmware-basic/
+#    - name: Save BASIC firmware
+#      run: |
+#        cd openwrt/bin/targets/*/*
+#        rm -rf packages
+#        mkdir -p /tmp/firmware-basic
+#        cp -a . /tmp/firmware-basic/
 
     # ============================================================
     # Build 2: GECOSAC-V2 (with gecoosac, incremental)
     # ============================================================
-    - name: Build GECOSAC firmware (incremental)
-      run: |
-        cd openwrt
-        cp /tmp/zn-m2-full.config .config
-        make defconfig
-        echo "$(nproc) thread compile (gecoosac-v2, incremental)"
-        make -j$(nproc) || make -j1 V=s
+#    - name: Build GECOSAC firmware (incremental)
+#      run: |
+#        cd openwrt
+#        cp /tmp/zn-m2-full.config .config
+#        make defconfig
+#        echo "$(nproc) thread compile (gecoosac-v2, incremental)"
+#        make -j$(nproc) || make -j1 V=s
 
     # ============================================================
     # Organize & Publish
@@ -179,10 +179,10 @@ jobs:
         path: /tmp/passwall-cache
         key: ${{ env.CACHE_KEY }}
 
-    - name: Delete old workflows runs
-      if: success()
-      uses: ophub/delete-releases-workflows@v0.1.0
-      with:
-        delete_workflows: true
-        workflows_keep_day: 3
-        gh_token: ${{ github.token }}
+#    - name: Delete old workflows runs
+#      if: success()
+#      uses: ophub/delete-releases-workflows@v0.1.0
+#      with:
+#        delete_workflows: true
+#        workflows_keep_day: 3
+#        gh_token: ${{ github.token }}
