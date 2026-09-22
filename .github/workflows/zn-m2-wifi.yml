@@ -1,0 +1,224 @@
+#
+# Build OpenWrt ZN-M2 Wi-Fi firmware
+#
+
+name: zn-m2-wifi build
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 19 * * *'
+
+defaults:
+  run:
+    shell: bash -euo pipefail {0}
+
+permissions:
+  contents: write
+
+env:
+  REPO_URL: https://github.com/AnClark/lede-zn-m2-wifi.git
+  REPO_BRANCH: zn-m2-wifi
+  FEEDS_CONF: feeds.conf.default
+  CONFIG_FILE: ./config/zn-m2-wifi.config
+  DIY_P1_SH: ./scripts/zn-m2/diy-part1.sh
+  DIY_P2_SH: ./scripts/zn-m2/diy-part2.sh
+  DIY_P3_SH: ./scripts/zn-m2/diy-part3.sh
+  TZ: Asia/Shanghai
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout build configuration
+        uses: actions/checkout@v4
+
+      - name: Setup build environment
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            ack antlr3 asciidoc autoconf automake autopoint \
+            binutils bison build-essential bzip2 ccache clang \
+            cmake cpio curl device-tree-compiler fastjar flex \
+            gawk gcc-multilib g++-multilib gettext genisoimage \
+            git gnutls-dev gperf haveged help2man intltool \
+            lib32gcc-dev libc6-dev-i386 libelf-dev libglib2.0-dev \
+            libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev \
+            libncurses5-dev libncursesw5-dev libpython3-dev \
+            libreadline-dev libssl-dev libtool libyaml-dev \
+            lrzsz mkisofs msmtp nano ninja-build p7zip \
+            p7zip-full patch pkgconf python3 python3-dev \
+            qemu-utils rsync scons squashfs-tools subversion \
+            swig texinfo uglifyjs unzip upx-ucl uuid-dev \
+            vim wget xmlto xxd zlib1g-dev
+
+      - name: Clone OpenWrt source
+        working-directory: /workdir
+        run: |
+          mkdir -p /workdir
+          git clone \
+            --depth=1 \
+            --single-branch \
+            --branch "$REPO_BRANCH" \
+            "$REPO_URL" openwrt
+
+          ln -sfn /workdir/openwrt "$GITHUB_WORKSPACE/openwrt"
+
+      - name: Load custom feeds
+        run: |
+          if [[ -f "$FEEDS_CONF" ]]; then
+            cp "$FEEDS_CONF" openwrt/feeds.conf.default
+          fi
+
+          cd openwrt
+
+          if [[ -f "$GITHUB_WORKSPACE/$DIY_P1_SH" ]]; then
+            bash "$GITHUB_WORKSPACE/$DIY_P1_SH"
+          fi
+
+      - name: Update feeds
+        working-directory: openwrt
+        run: ./scripts/feeds update -a
+
+      - name: Modify feeds
+        working-directory: openwrt
+        run: |
+          if [[ -f "$GITHUB_WORKSPACE/$DIY_P2_SH" ]]; then
+            bash "$GITHUB_WORKSPACE/$DIY_P2_SH"
+          fi
+
+      - name: Install feeds
+        working-directory: openwrt
+        run: ./scripts/feeds install -a
+
+      - name: Load configuration
+        working-directory: openwrt
+        run: |
+          cp "$GITHUB_WORKSPACE/$CONFIG_FILE" .config
+
+          if [[ -f "$GITHUB_WORKSPACE/$DIY_P3_SH" ]]; then
+            bash "$GITHUB_WORKSPACE/$DIY_P3_SH"
+          fi
+
+          make defconfig
+          cp .config "$GITHUB_WORKSPACE/zn-m2-wifi.final.config"
+
+      - name: Download packages
+        working-directory: openwrt
+        run: |
+          make download -j"$(nproc)"
+          find dl -type f -size -1024c -delete
+
+      - name: Compile firmware
+        working-directory: openwrt
+        run: |
+          echo "Starting compilation with $(nproc) threads"
+          make -j"$(nproc)" || make -j1 V=s
+
+      - name: Detect kernel version and selected plugins
+        id: metadata
+        working-directory: openwrt
+        run: |
+          KERNEL_VERSION="unknown"
+
+          if KERNEL_VERSION=$(make -s kernelversion 2>/dev/null); then
+            :
+          elif [[ -f include/kernel-version.mk ]]; then
+            KERNEL_VERSION="$(
+              awk -F'=' '/^LINUX_VERSION-/ {
+                gsub(/[ \t"\047]/, "", $2);
+                print $2;
+                exit
+              }' include/kernel-version.mk
+            )"
+          fi
+
+          [[ -n "$KERNEL_VERSION" ]] || KERNEL_VERSION="unknown"
+
+          PLUGINS="$(
+            awk -F'[=]' '
+              /^CONFIG_PACKAGE_/ && $2 == "y" {
+                name=$1
+                sub(/^CONFIG_PACKAGE_/, "", name)
+                print name
+              }
+            ' .config | sort -u | paste -sd ', ' -
+          )"
+
+          [[ -n "$PLUGINS" ]] || PLUGINS="无"
+
+          {
+            echo "kernel_version=$KERNEL_VERSION"
+            echo "plugins<<PLUGIN_LIST"
+            echo "$PLUGINS"
+            echo "PLUGIN_LIST"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "Detected kernel version: $KERNEL_VERSION"
+          echo "Detected selected packages:"
+          echo "$PLUGINS"
+
+      - name: Prepare release assets
+        id: release
+        run: |
+          TARGET_DIR="$(
+            find openwrt/bin/targets \
+              -mindepth 2 \
+              -maxdepth 2 \
+              -type d \
+              | head -n 1
+          )"
+
+          if [[ -z "$TARGET_DIR" ]]; then
+            echo "OpenWrt target directory was not found."
+            exit 1
+          fi
+
+          rm -rf release
+          mkdir -p release
+
+          find "$TARGET_DIR" -maxdepth 1 -type f \
+            -exec cp -v {} release/ \;
+
+          if [[ -d "$TARGET_DIR/packages" ]]; then
+            find "$TARGET_DIR/packages" -type f \
+              -exec cp -v {} release/ \;
+          fi
+
+          cp zn-m2-wifi.final.config release/zn-m2-wifi.config
+
+          RELEASE_TAG="zn-m2-wifi-$(date +%Y%m%d-%H%M%S)"
+          echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "源码：$REPO_URL"
+            echo "分支：$REPO_BRANCH"
+            echo "登录地址：192.168.1.1"
+            echo "登录密码：password"
+            echo
+            echo "WIFI名称：yaohongmin1"
+            echo "WIFI密码：15194931169"
+            echo
+            echo "内核版本：${{ steps.metadata.outputs.kernel_version }}"
+            echo "插件列表："
+            echo "${{ steps.metadata.outputs.plugins }}"
+            echo
+            echo "编译时间：$(date '+%Y-%m-%d %H:%M:%S %Z')"
+            echo "GitHub Actions Run：${{ github.run_id }}"
+          } > release.txt
+
+          echo "Release files:"
+          ls -lh release
+
+      - name: Upload firmware to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release.outputs.release_tag }}
+          name: ${{ steps.release.outputs.release_tag }}
+          body_path: release.txt
+          files: release/*
+          draft: false
+          prerelease: false
