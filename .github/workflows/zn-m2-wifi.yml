@@ -56,16 +56,14 @@ jobs:
             vim wget xmlto xxd zlib1g-dev
 
       - name: Clone OpenWrt source
-        working-directory: /workdir
         run: |
-          mkdir -p /workdir
+          rm -rf openwrt
           git clone \
             --depth=1 \
             --single-branch \
             --branch "$REPO_BRANCH" \
-            "$REPO_URL" openwrt
-
-          ln -sfn /workdir/openwrt "$GITHUB_WORKSPACE/openwrt"
+            "$REPO_URL" \
+            openwrt
 
       - name: Load custom feeds
         run: |
