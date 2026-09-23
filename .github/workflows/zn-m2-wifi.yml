@@ -7,7 +7,6 @@ name: zn-m2-wifi build
 on:
   workflow_dispatch:
   schedule:
-    - cron: '23 19 * * *'
 
 defaults:
   run:
