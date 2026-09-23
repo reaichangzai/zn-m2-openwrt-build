@@ -6,7 +6,6 @@ name: zn-m2-wifi build
 
 on:
   workflow_dispatch:
-  schedule:
 
 defaults:
   run:
